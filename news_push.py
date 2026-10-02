@@ -1,83 +1,132 @@
-import requests
-import json
 import os
+import requests
 
-FEISHU_WEBHOOK = os.getenv("FEISHU_WEBHOOK")
+def get_zhihu_hot():
+    """知乎热榜"""
+    url = "https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=8"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    resp = requests.get(url, headers=headers, timeout=10)
+    data = resp.json()
+    lines = []
+    for idx, item in enumerate(data["data"], start=1):
+        title = item["target"]["title"]
+        link = "https://www.zhihu.com/question/" + str(item["target"]["id"])
+        hot = item["target"]["metrics"]["hot_score"]
+        lines.append(f"{idx}. {title} | 热度:{hot} | {link}")
+    return "【知乎热榜】\n" + "\n".join(lines)
 
-def fetch_wb_hot():
+
+def get_weibo_hot():
+    """微博热搜"""
+    url = "https://weibo.com/ajax/side/hotSearch"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    resp = requests.get(url, headers=headers, timeout=10)
+    data = resp.json()
+    lines = []
+    for idx, item in enumerate(data["data"]["realtime"][:8], start=1):
+        title = item["word"]
+        link = f"https://s.weibo.com/weibo?q={item['word']}"
+        hot = item.get("num", "")
+        lines.append(f"{idx}. {title} | 热度:{hot} | {link}")
+    return "\n\n【微博热搜】\n" + "\n".join(lines)
+
+
+def get_baidu_hot():
+    """百度热搜"""
+    url = "https://api.toutiaoapi.com/api/feed/top_search/v1/"
+    resp = requests.get(url, timeout=10)
+    data = resp.json()
+    lines = []
+    for idx, item in enumerate(data["data"][:8], start=1):
+        title = item["title"]
+        link = item["url"]
+        lines.append(f"{idx}. {title} | {link}")
+    return "\n\n【百度热搜】\n" + "\n".join(lines)
+
+
+def get_bilibili_hot():
+    """B站热榜"""
+    url = "https://api.bilibili.com/x/web-interface/ranking/v2?rid=0&type=all"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    resp = requests.get(url, headers=headers, timeout=10)
+    data = resp.json()
+    lines = []
+    for idx, item in enumerate(data["data"]["list"][:8], start=1):
+        title = item["title"]
+        link = item["short_link_v2"]
+        play = item["play"]
+        lines.append(f"{idx}. {title} | 播放:{play} | {link}")
+    return "\n\n【B站热榜】\n" + "\n".join(lines)
+
+
+def get_juejin_hot():
+    """掘金热榜"""
+    url = "https://api.juejin.cn/recommend_api/v1/article/recommend_hot_list?sort_type=1&page_size=8&cursor=0"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    resp = requests.post(url, headers=headers, timeout=10, json={"id_type":2,"sort_type":1,"page_size":8,"cursor":"0"})
+    data = resp.json()
+    lines = []
+    for idx, item in enumerate(data["data"], start=1):
+        title = item["article_info"]["title"]
+        link = f"https://juejin.cn/post/{item['article_info']['article_id']}"
+        view = item["article_info"]["view_count"]
+        lines.append(f"{idx}. {title} | 阅读:{view} | {link}")
+    return "\n\n【掘金热榜】\n" + "\n".join(lines)
+
+
+def get_all_hot_content():
+    """聚合全部平台，异常捕获，单个平台抓取失败不影响整体推送"""
+    content = ""
     try:
-        headers = {"User-Agent":"Mozilla/5.0","Referer":"https://s.weibo.com/"}
-        r = requests.get("https://api.weibo.cn/2/guest/search/hot/word",headers=headers,timeout=10)
-        data = r.json()
-        lst = []
-        for item in data.get("data",{}).get("hotword",[]):
-            word = item.get("word")
-            if word: lst.append(word)
-        return "【微博热搜】\n" + "\n".join([f"{i+1}. {x}" for i,x in enumerate(lst[:10])])
+        content += get_zhihu_hot()
     except Exception as e:
-        return "【微博热搜】获取失败"
-
-def fetch_baidu_hot():
+        content += "\n【知乎热榜】抓取失败：" + str(e)
     try:
-        r = requests.get("https://api.caiyunapp.com/v2/baidu_hot",timeout=10)
-        data = r.json()
-        lst = []
-        for item in data.get("result",[]):
-            lst.append(item.get("title"))
-        return "【百度热榜】\n" + "\n".join([f"{i+1}. {x}" for i,x in enumerate(lst[:10])])
+        content += get_weibo_hot()
     except Exception as e:
-        return "【百度热榜】获取失败"
-
-def fetch_toutiao_hot():
+        content += "\n\n【微博热搜】抓取失败：" + str(e)
     try:
-        r = requests.get("https://api.toutiaoapi.com/api/feed/hotboard",timeout=10)
-        data = r.json()
-        lst = []
-        for item in data.get("data",[]):
-            lst.append(item.get("title"))
-        return "【头条热榜】\n" + "\n".join([f"{i+1}. {x}" for i,x in enumerate(lst[:10])])
+        content += get_baidu_hot()
     except Exception as e:
-        return "【头条热榜】获取失败"
-
-def fetch_60s():
+        content += "\n\n【百度热搜】抓取失败：" + str(e)
     try:
-        r = requests.get("https://api.60s.ink/v1/api/today",timeout=10)
-        data = r.json()
-        news = data.get("news","")
-        return "【60s新闻速览】\n" + news
+        content += get_bilibili_hot()
     except Exception as e:
-        return "【60s新闻速览】获取失败"
+        content += "\n\n【B站热榜】抓取失败：" + str(e)
+    try:
+        content += get_juejin_hot()
+    except Exception as e:
+        content += "\n\n【掘金热榜】抓取失败：" + str(e)
+    return content
 
-def push_feishu(content):
+
+def send_feishu_post(title: str, body_text: str):
+    webhook = os.getenv("FEISHU_WEBHOOK")
+    if not webhook:
+        print("错误：未读取到 FEISHU_WEBHOOK 环境变量")
+        return
+
     payload = {
         "msg_type": "post",
         "content": {
             "post": {
                 "zh_cn": {
-                    "title": "📰 每日全行业热榜简报",
+                    "title": title,
                     "content": [
-                        [{"tag":"lark_md","text":content}]
+                        [
+                            {"tag": "text", "text": body_text}
+                        ]
                     ]
                 }
             }
         }
     }
-    headers = {"Content-Type":"application/json;charset=utf-8"}
-    resp = requests.post(FEISHU_WEBHOOK,json=payload,headers=headers,timeout=15)
-    res = resp.json()
-    if res.get("code") ==0:
-        print("✅飞书推送成功")
-    else:
-        print(f"❌推送失败:{res}")
+    resp = requests.post(webhook, json=payload, timeout=15)
+    result = resp.json()
+    print("飞书接口返回：", result)
+    return result
+
 
 if __name__ == "__main__":
-    if not FEISHU_WEBHOOK:
-        print("缺少FEISHU_WEBHOOK环境变量")
-        exit(1)
-    parts = []
-    parts.append(fetch_wb_hot())
-    parts.append(fetch_baidu_hot())
-    parts.append(fetch_toutiao_hot())
-    parts.append(fetch_60s())
-    full_text = "\n\n".join(parts)
-    push_feishu(full_text)
+    full_text = get_all_hot_content()
+    send_feishu_post("📰 多平台每日热榜汇总", full_text)
